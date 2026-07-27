@@ -1,49 +1,39 @@
-from app.database import users_collection
+from app.models.user import User
+from app.schemas.user import UserSignup, UserLogin
 from app.core.security import hash_password, verify_password, create_access_token
-from app.models.user import UserSignup, UserLogin
 from fastapi import HTTPException, status
 
 
 async def signup_user(user_data: UserSignup) -> str:
-    # Check if a user with this email already exists
-    existing_user = await users_collection.find_one({"email": user_data.email})
+    existing_user = await User.find_one(User.email == user_data.email)
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
 
-    # Hash the password before storing
     hashed = hash_password(user_data.password)
 
-    # Insert the new user document into MongoDB
-    new_user = {
-        "email": user_data.email,
-        "hashed_password": hashed,
-    }
-    await users_collection.insert_one(new_user)
+    new_user = User(email=user_data.email, hashed_password=hashed)
+    await new_user.insert()
 
-    # Issue a token immediately so they're logged in right after signup
-    token = create_access_token({"sub": user_data.email})
+    token = create_access_token({"sub": str(new_user.id)})
     return token
 
 
 async def login_user(user_data: UserLogin) -> str:
-    # Find the user by email
-    user = await users_collection.find_one({"email": user_data.email})
+    user = await User.find_one(User.email == user_data.email)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
         )
 
-    # Verify the password matches the stored hash
-    if not verify_password(user_data.password, user["hashed_password"]):
+    if not verify_password(user_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
         )
 
-    # Issue a token
-    token = create_access_token({"sub": user_data.email})
+    token = create_access_token({"sub": str(user.id)})
     return token

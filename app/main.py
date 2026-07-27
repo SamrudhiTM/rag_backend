@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from app.database import init_db
-from app.routers import auth,documents
+from app.routers import auth,documents,chat
 
 app = FastAPI(title="RAG Backend Assignment")
 
@@ -12,7 +12,7 @@ async def startup_event():
 
 app.include_router(auth.router)
 app.include_router(documents.router)
-
+app.include_router(chat.router)
 
 @app.get("/")
 async def root():

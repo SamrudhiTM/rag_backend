@@ -4,6 +4,8 @@ from app.config import settings
 from app.models.user import User
 from app.models.document import Document
 from app.models.chunk import Chunk
+from app.models.error_log import ErrorLog
+
 
 
 async def init_db():
@@ -12,5 +14,5 @@ async def init_db():
 
     await init_beanie(
         database=database,
-        document_models=[User, Document, Chunk],
+        document_models=[User, Document, Chunk, ErrorLog],
     )

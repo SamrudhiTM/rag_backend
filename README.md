@@ -73,9 +73,13 @@ Authorization: Bearer <token>
 - `chunks.owner_id` — denormalized onto chunks (not just documents) so `/chat` can query a user's chunks directly, without joining through documents
 - `error_logs.timestamp` — speeds up querying recent errors
 
-## Retrieval Approach
 
+## Retrieval Approach
 Query and chunk text are embedded with the same local model, and matched via in-memory cosine similarity (NumPy), scoped to the authenticated user's own chunks. This was a deliberate choice to keep the pipeline simple and reliable within the time limit — at production scale, this would move to MongoDB Atlas Vector Search or a dedicated vector DB (Qdrant, Pinecone) for indexed similarity search.
+
+Retrieval always returns the top-3 most similar chunks regardless of actual relevance; a similarity threshold could be added in production to avoid including marginally-relevant chunks when fewer than 3 truly relevant ones exist. This was verified by ingesting documents on unrelated topics (e.g. machine learning and coffee brewing) and confirming the correct source chunks were retrieved and cited for topic-specific questions.
+
+The LLM is explicitly prompted to answer only from the retrieved context, and to say so honestly if the context doesn't contain the answer — rather than falling back on its own general knowledge. This was verified by asking an out-of-scope question (e.g. "What is the capital of France?") with only coffee/solar-system documents ingested, and confirming the model correctly declined to answer instead of hallucinating a response outside the retrieved context.
 
 ## Error Handling
 

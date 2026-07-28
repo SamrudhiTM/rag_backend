@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60
 
     groq_api_key: str
+    gemini_api_key: str
 
     environment: str = "development"
 

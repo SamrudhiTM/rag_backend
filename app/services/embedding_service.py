@@ -1,16 +1,30 @@
-from sentence_transformers import SentenceTransformer
 from typing import List
+from google import genai
+from app.config import settings
 
-_model = SentenceTransformer("all-MiniLM-L6-v2")
+client = genai.Client(api_key=settings.gemini_api_key)
 
-EMBEDDING_DIM = 384
+EMBEDDING_DIM = 768
 
 
 def embed_text(text: str) -> List[float]:
-    vector = _model.encode(text, normalize_embeddings=True)
-    return vector.tolist()
+    response = client.models.embed_content(
+        model="gemini-embedding-001",
+        contents=text,
+    )
+
+    return response.embeddings[0].values
 
 
 def embed_texts(texts: List[str]) -> List[List[float]]:
-    vectors = _model.encode(texts, normalize_embeddings=True)
-    return [v.tolist() for v in vectors]
+    vectors = []
+
+    for text in texts:
+        response = client.models.embed_content(
+            model="gemini-embedding-001",
+            contents=text,
+        )
+
+        vectors.append(response.embeddings[0].values)
+
+    return vectors

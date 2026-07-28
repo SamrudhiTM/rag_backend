@@ -1,96 +1,185 @@
 # RAG Backend Assignment
 
-FastAPI backend with JWT authentication and a Retrieval-Augmented Generation (RAG) pipeline: document ingestion with chunking + embeddings, a `/chat` endpoint that retrieves relevant context and generates answers via an LLM, and middleware that logs unhandled errors to MongoDB.
+A FastAPI backend implementing JWT authentication and a Retrieval-Augmented Generation (RAG) pipeline. Users can securely authenticate, ingest text documents, and ask questions based on their uploaded documents. The application retrieves relevant document chunks using semantic search and generates answers using an LLM.
+
+## Live Demo
+
+**GitHub Repository:**  
+https://github.com/SamrudhiTM/rag_backend
+
+**Live API:**  
+https://rag-backend-v03r.onrender.com
+
+**Swagger Documentation:**  
+https://rag-backend-v03r.onrender.com/docs
+
+> **Note:** The application is deployed on Render's free tier. If the service has been idle, the first request may take 30–60 seconds to start.
+
+---
 
 ## Tech Stack
 
-- FastAPI (async), MongoDB via Motor + Beanie ODM
-- JWT auth (python-jose) + bcrypt password hashing (passlib)
-- Embeddings: sentence-transformers (`all-MiniLM-L6-v2`), run locally
-- LLM: Groq API (`llama-3.1-8b-instant`)
-- Retrieval: in-memory cosine similarity over stored chunk embeddings
+- FastAPI
+- MongoDB (Motor + Beanie ODM)
+- JWT Authentication (python-jose)
+- Password Hashing (Passlib + bcrypt)
+- Google Gemini Embeddings API (`gemini-embedding-001`)
+- Groq (`llama-3.1-8b-instant`)
+- NumPy (Cosine Similarity)
+
+---
+
+## Features
+
+- JWT-based Signup & Login
+- Secure password hashing
+- Text document ingestion
+- Automatic document chunking
+- Semantic embeddings using Gemini Embeddings
+- Context retrieval using cosine similarity
+- RAG-powered chat endpoint
+- Global exception logging middleware
+- Interactive Swagger API documentation
+
+---
 
 ## Setup
 
-1. Clone and create a virtual environment:
-
 ```bash
-   git clone https://github.com/SamrudhiTM/rag_backend.git
-   cd rag_backend
-   python -m venv venv
-   venv\Scripts\activate   # Windows
+git clone https://github.com/SamrudhiTM/rag_backend.git
+cd rag_backend
+
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+pip install -r requirements.txt
+
+uvicorn app.main:app --reload
 ```
 
-2. Install dependencies:
+Create a `.env` file from `.env.example` and configure:
 
-```bash
-   pip install -r requirements.txt
+```env
+MONGO_URI=
+MONGO_DB_NAME=
+
+JWT_SECRET=
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=60
+
+GROQ_API_KEY=
+GEMINI_API_KEY=
 ```
 
-3. Copy `.env.example` to `.env` and fill in real values (MongoDB URI, JWT secret, Groq API key). Generate a secure JWT secret with:
-
-```bash
-   python -c "import secrets; print(secrets.token_hex(32))"
-```
-
-4. Run the server:
-
-```bash
-   uvicorn app.main:app --reload
-```
-
-5. Open `http://127.0.0.1:8000/docs` for interactive Swagger docs.
+---
 
 ## API Endpoints
 
-| Method | Endpoint       | Auth | Description                                                 |
-| ------ | -------------- | ---- | ----------------------------------------------------------- |
-| POST   | `/auth/signup` | No   | Create account, returns JWT                                 |
-| POST   | `/auth/login`  | No   | Authenticate, returns JWT                                   |
-| POST   | `/documents/`  | Yes  | Ingest text — chunks it, generates + stores embeddings      |
-| POST   | `/chat/`       | Yes  | Retrieves relevant chunks, generates an answer via Groq LLM |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/auth/signup` | Register a new user |
+| POST | `/auth/login` | Login and receive JWT |
+| POST | `/documents/` | Ingest a text document |
+| POST | `/chat/` | Ask questions about uploaded documents |
 
-**Example — Chat:**
+### Using the Hosted API
 
-```json
-POST /chat/
-Authorization: Bearer <token>
-{ "query": "What is FastAPI?" }
+1. Register using `/auth/signup`
+2. Login using `/auth/login`
+3. Copy the JWT token.
+4. Click **Authorize** in Swagger and enter:
+
+```
+Bearer <your_jwt_token>
 ```
 
-```json
-{
-  "answer": "FastAPI is a modern web framework...",
-  "sources": ["FastAPI is a modern, fast web framework for building APIs..."]
-}
+5. Upload a document using `/documents/`
+6. Ask questions using `/chat/`
+
+---
+
+## RAG Pipeline
+
+```
+Document
+    │
+    ▼
+Chunking
+    │
+    ▼
+Gemini Embeddings
+    │
+    ▼
+MongoDB
+
+User Query
+    │
+    ▼
+Gemini Embedding
+    │
+    ▼
+Cosine Similarity
+    │
+    ▼
+Top Relevant Chunks
+    │
+    ▼
+Groq LLM
+    │
+    ▼
+Final Response
 ```
 
-## Indexing Choices
+---
 
-- `users.email` — unique index; prevents duplicate signups, speeds up login lookups
-- `documents.owner_id` — speeds up fetching a user's documents
-- `chunks.document_id` — speeds up fetching all chunks for a document
-- `chunks.owner_id` — denormalized onto chunks (not just documents) so `/chat` can query a user's chunks directly, without joining through documents
-- `error_logs.timestamp` — speeds up querying recent errors
+## Database Indexes
 
+| Collection | Index | Purpose |
+|------------|-------|---------|
+| users | `email` (unique) | Fast login & prevents duplicate accounts |
+| documents | `owner_id` | Retrieve a user's documents |
+| chunks | `owner_id` | Retrieve authenticated user's chunks |
+| chunks | `document_id` | Retrieve document chunks |
+| error_logs | `timestamp` | Query recent errors efficiently |
 
-## Retrieval Approach
-Query and chunk text are embedded with the same local model, and matched via in-memory cosine similarity (NumPy), scoped to the authenticated user's own chunks. This was a deliberate choice to keep the pipeline simple and reliable within the time limit — at production scale, this would move to MongoDB Atlas Vector Search or a dedicated vector DB (Qdrant, Pinecone) for indexed similarity search.
+---
 
-Retrieval always returns the top-3 most similar chunks regardless of actual relevance; a similarity threshold could be added in production to avoid including marginally-relevant chunks when fewer than 3 truly relevant ones exist. This was verified by ingesting documents on unrelated topics (e.g. machine learning and coffee brewing) and confirming the correct source chunks were retrieved and cited for topic-specific questions.
+## Retrieval Strategy
 
-The LLM is explicitly prompted to answer only from the retrieved context, and to say so honestly if the context doesn't contain the answer — rather than falling back on its own general knowledge. This was verified by asking an out-of-scope question (e.g. "What is the capital of France?") with only coffee/solar-system documents ingested, and confirming the model correctly declined to answer instead of hallucinating a response outside the retrieved context.
+Documents are split into smaller chunks and embedded using **Google Gemini Embeddings API**. During chat, the user's query is embedded using the same model, cosine similarity is calculated against the authenticated user's stored chunk embeddings, and the most relevant chunks are provided as context to the Groq LLM.
+
+For this assignment, cosine similarity is computed within the application because the dataset is small. For larger datasets, MongoDB Atlas Vector Search or a dedicated vector database (such as Pinecone, Qdrant, or Weaviate) would provide better scalability.
+
+---
 
 ## Error Handling
 
-A custom `BaseHTTPMiddleware` catches unhandled exceptions, logs timestamp, endpoint, method, error message, stack trace, and authenticated user ID (if present) to the `error_logs` collection, and returns a generic JSON 500 response — never a raw traceback. Expected rejections (401, 400, etc.) are handled by FastAPI's own `HTTPException` and aren't logged as errors, since they're normal application behavior, not bugs.
+A custom FastAPI middleware catches unhandled exceptions and stores them in the `error_logs` collection with:
 
-## Testing Performed
+- Timestamp
+- Endpoint
+- HTTP Method
+- Error Message
+- Stack Trace
+- Authenticated User ID (if available)
 
-All endpoints manually tested via Swagger UI and curl: signup/login (including duplicate email and wrong password), document ingestion (short text, long multi-chunk text, empty content), chat (with context and with no ingested documents), unauthenticated access rejection, and middleware verified against a real failure (invalid Groq API key) confirming all required log fields are captured correctly.
+The API returns a generic HTTP 500 response without exposing internal implementation details.
 
-## Notes
+---
 
-- Used in-memory cosine similarity for retrieval instead of MongoDB Atlas Vector Search, to keep scope reliable within the time limit. At production scale, this would move to Atlas Vector Search or a dedicated vector DB.
-- `owner_id` is deliberately duplicated on the `Chunk` model (not just `Document`) so `/chat` retrieval can query a user's chunks directly in one step, without joining through documents — a denormalization tradeoff for read performance.
-- Good-to-have items (Redis, Kafka, Docker, background jobs, streaming responses, automated unit tests) were not implemented due to the 24-hour timeline. Instead, all endpoints were manually tested end-to-end via Swagger UI and curl, including edge cases (empty content, long multi-chunk documents, wrong password, duplicate signup, unauthenticated access) and a real failure scenario (invalid Groq API key) to verify the error-logging middleware captures all required fields correctly.
+## Future Improvements
+
+- MongoDB Atlas Vector Search
+- Redis caching
+- Background document ingestion
+- Docker & Docker Compose
+- Streaming LLM responses
+- Unit tests
+
+---
+
+## Design Decision
+
+Google Gemini Embeddings API was chosen for semantic embedding generation instead of a locally hosted embedding model. This keeps the application lightweight, reduces server memory usage, and makes deployment on Render's free tier reliable while maintaining high-quality semantic retrieval.
